@@ -94,3 +94,4 @@ def update_profile(name: str = Form(None), avatar: UploadFile = File(None), auth
     except Exception as e:
         return {"error": str(e)}
 
+
