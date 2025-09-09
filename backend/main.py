@@ -71,7 +71,7 @@ async def update_profile(
     authorization: str = Header(...)
 ):
     """
-    Update logged-in user's metadata
+    Update logged-in user's metadata with enhanced security and file management
     """
     try:
         # Extract JWT token
@@ -79,49 +79,68 @@ async def update_profile(
 
         # Get user info
         user = supabase.auth.get_user(token).user
+        user_id = user.id
         
-        avatar_url = None
+        avatar_url = user.user_metadata.get("avatar_url") if user.user_metadata else None
+        old_avatar_path = None
         
-        # Handle avatar upload if provided
-        if avatar and avatar.filename:
-            # Read file content
+        # Extract path from old avatar URL if it exists
+        if avatar_url and "avatars/" in avatar_url:
+            old_avatar_path = avatar_url.split("avatars/")[-1]
+        
+        # Handle file upload if avatar is provided
+        if avatar:
+            # Validate file type
+            allowed_types = ["image/jpeg", "image/png", "image/gif"]
+            if avatar.content_type not in allowed_types:
+                return {"error": "Invalid file type. Only JPEG, PNG and GIF are allowed."}
+                
+            # Read and validate file size
             file_content = await avatar.read()
+            if len(file_content) > 2_000_000:  # 2MB limit
+                return {"error": "File too large. Maximum size is 2MB."}
             
-            # Create a unique file path
-            import uuid
-            file_ext = avatar.filename.split(".")[-1]
-            file_path = f"{uuid.uuid4()}.{file_ext}"
+            # Generate path with user ID for better organization
+            file_ext = os.path.splitext(avatar.filename)[1].lower()
+            file_path = f"users/{user_id}/avatar{file_ext}"
             
-            # Upload file to Supabase Storage
-            supabase.storage.from_("avatars").upload(
+            # Upload to Supabase Storage
+            storage_response = supabase.storage.from_("avatars").upload(
                 path=file_path,
                 file=file_content,
-                file_options={"content-type": avatar.content_type}
+                file_options={"content-type": avatar.content_type, "upsert": True}
             )
             
-            # Get public URL for the uploaded file
+            # Get public URL
             avatar_url = supabase.storage.from_("avatars").get_public_url(file_path)
-        
-        # Prepare update data
-        update_data = {"name": name} if name else {}
-        if avatar_url:
-            update_data["avatar_url"] = avatar_url
             
-        # Only update if we have data to update
-        if update_data:
-            # Update metadata
-            updated_user = supabase.auth.update_user({
-                "data": update_data
-            }, token)
-            
-            return {
-                "message": "Profile updated",
-                "email": updated_user.user.email,
-                "name": updated_user.user.user_metadata.get("name"),
-                "avatar_url": updated_user.user.user_metadata.get("avatar_url")
+            # Delete old avatar if it exists and is different
+            if old_avatar_path and old_avatar_path != file_path:
+                try:
+                    supabase.storage.from_("avatars").remove([old_avatar_path])
+                except Exception as e:
+                    # Log error but don't fail the whole operation
+                    print(f"Failed to delete old avatar: {str(e)}")
+
+        # Update metadata with new values or keep existing ones
+        update_data = {
+            "data": {
+                "name": name if name is not None else user.user_metadata.get("name"),
+                "avatar_url": avatar_url
             }
-        else:
-            return {"message": "No changes to update"}
+        }
+
+        # Update user metadata
+        updated_user = supabase.auth.update_user(update_data)
+
+        return {
+            "message": "Profile updated",
+            "email": updated_user.user.email,
+            "name": updated_user.user.user_metadata.get("name"),
+            "avatar_url": updated_user.user.user_metadata.get("avatar_url")
+        }
 
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         return {"error": str(e)}
