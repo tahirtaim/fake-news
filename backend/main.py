@@ -64,9 +64,9 @@ def login(email: str = Form(...), password: str = Form(...)):
         return {"error": str(e)}
 
 @app.post("/update-profile")
-def update_profile(name: str = Form(None), avatar: UploadFile = File(None), authorization: str = Header(...)):
+async def update_profile(name: str = Form(None), avatar: UploadFile = File(None), authorization: str = Header(...)):
     """
-    Update logged-in user's metadata
+    Update logged-in user's metadata with optional file upload
     """
     try:
         # Extract JWT token
@@ -74,15 +74,38 @@ def update_profile(name: str = Form(None), avatar: UploadFile = File(None), auth
 
         # Get user info
         user = supabase.auth.get_user(token).user
-
-        # Update metadata
-        updated_user = supabase.auth.update_user({
-           "data": {
-                "name": name,
-                "avatar_url": avatar
-            }
-
-        })
+        
+        avatar_url = None
+        
+        # Handle file upload if avatar is provided
+        if avatar and avatar.filename:
+            # Generate a unique filename to avoid conflicts
+            file_extension = os.path.splitext(avatar.filename)[1]
+            unique_filename = f"{uuid.uuid4()}{file_extension}"
+            
+            # Read file content
+            contents = await avatar.read()
+            
+            # Upload to Supabase Storage
+            upload_response = supabase.storage.from_("avatars").upload(
+                path=unique_filename,
+                file=contents,
+                file_options={"content-type": avatar.content_type}
+            )
+            
+            # Get the public URL for the uploaded file
+            avatar_url = supabase.storage.from_("avatars").get_public_url(unique_filename)
+        
+        # Prepare metadata update
+        user_metadata = {"name": name}
+        if avatar_url:
+            user_metadata["avatar_url"] = avatar_url
+        
+        # Update user metadata
+        updated_user = supabase.auth.update_user(
+            token,
+            {"data": user_metadata}
+        )
 
         return {
             "message": "Profile updated",
@@ -92,6 +115,4 @@ def update_profile(name: str = Form(None), avatar: UploadFile = File(None), auth
         }
 
     except Exception as e:
-        return {"error": str(e)}
-
-
+        raise HTTPException(status_code=400, detail=str(e))
