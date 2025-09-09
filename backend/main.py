@@ -65,24 +65,20 @@ def login(email: str = Form(...), password: str = Form(...)):
 
 @app.post("/update-profile")
 def update_profile(name: str = Form(None), avatar: str = Form(None), authorization: str = Header(...)):
-    """
-    Update logged-in user's metadata
-    """
     try:
-        # Extract JWT token
         token = authorization.split(" ")[1]  # Bearer <token>
-
-        # Get user info
         user = supabase.auth.get_user(token).user
 
-        # Update metadata
-        updated_user = supabase.auth.update_user({
-           "data": {
-                "name": name,
-                "avatar_url": avatar
-            }
+        update_data = {}
+        if name is not None:
+            update_data["name"] = name
+        if avatar is not None:
+            update_data["avatar_url"] = avatar
 
-        })
+        if not update_data:
+            return {"error": "No fields to update"}
+
+        updated_user = supabase.auth.update_user({"data": update_data})
 
         return {
             "message": "Profile updated",
@@ -90,8 +86,5 @@ def update_profile(name: str = Form(None), avatar: str = Form(None), authorizati
             "name": updated_user.user.user_metadata.get("name"),
             "avatar_url": updated_user.user.user_metadata.get("avatar_url")
         }
-
     except Exception as e:
         return {"error": str(e)}
-
-
