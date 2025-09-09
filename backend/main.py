@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
+import uuid
 
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -64,9 +65,13 @@ def login(email: str = Form(...), password: str = Form(...)):
         return {"error": str(e)}
 
 @app.post("/update-profile")
-async def update_profile(name: str = Form(None), avatar: UploadFile = File(None), authorization: str = Header(...)):
+async def update_profile(
+    name: str = Form(None), 
+    avatar: UploadFile = File(None), 
+    authorization: str = Header(...)
+):
     """
-    Update logged-in user's metadata with optional file upload
+    Update logged-in user's metadata
     """
     try:
         # Extract JWT token
@@ -77,42 +82,46 @@ async def update_profile(name: str = Form(None), avatar: UploadFile = File(None)
         
         avatar_url = None
         
-        # Handle file upload if avatar is provided
+        # Handle avatar upload if provided
         if avatar and avatar.filename:
-            # Generate a unique filename to avoid conflicts
-            file_extension = os.path.splitext(avatar.filename)[1]
-            unique_filename = f"{uuid.uuid4()}{file_extension}"
-            
             # Read file content
-            contents = await avatar.read()
+            file_content = await avatar.read()
             
-            # Upload to Supabase Storage
-            upload_response = supabase.storage.from_("avatars").upload(
-                path=unique_filename,
-                file=contents,
+            # Create a unique file path
+            import uuid
+            file_ext = avatar.filename.split(".")[-1]
+            file_path = f"{uuid.uuid4()}.{file_ext}"
+            
+            # Upload file to Supabase Storage
+            supabase.storage.from_("avatars").upload(
+                path=file_path,
+                file=file_content,
                 file_options={"content-type": avatar.content_type}
             )
             
-            # Get the public URL for the uploaded file
-            avatar_url = supabase.storage.from_("avatars").get_public_url(unique_filename)
+            # Get public URL for the uploaded file
+            avatar_url = supabase.storage.from_("avatars").get_public_url(file_path)
         
-        # Prepare metadata update
-        user_metadata = {"name": name}
+        # Prepare update data
+        update_data = {"name": name} if name else {}
         if avatar_url:
-            user_metadata["avatar_url"] = avatar_url
-        
-        # Update user metadata
-        updated_user = supabase.auth.update_user(
-            token,
-            {"data": user_metadata}
-        )
-
-        return {
-            "message": "Profile updated",
-            "email": updated_user.user.email,
-            "name": updated_user.user.user_metadata.get("name"),
-            "avatar_url": updated_user.user.user_metadata.get("avatar_url")
-        }
+            update_data["avatar_url"] = avatar_url
+            
+        # Only update if we have data to update
+        if update_data:
+            # Update metadata
+            updated_user = supabase.auth.update_user({
+                "data": update_data
+            }, token)
+            
+            return {
+                "message": "Profile updated",
+                "email": updated_user.user.email,
+                "name": updated_user.user.user_metadata.get("name"),
+                "avatar_url": updated_user.user.user_metadata.get("avatar_url")
+            }
+        else:
+            return {"message": "No changes to update"}
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        return {"error": str(e)}
