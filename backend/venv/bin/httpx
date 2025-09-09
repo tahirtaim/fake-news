@@ -1,4 +1,4 @@
-#!/root/fake-news/backend/venv/bin/python3
+#!/root/projects/new/fake-news/backend/venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

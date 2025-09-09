@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Form, Header
+from fastapi import *
 from pydantic import BaseModel
 from supabase import create_client, Client
 import os
@@ -63,9 +63,8 @@ def login(email: str = Form(...), password: str = Form(...)):
     except Exception as e:
         return {"error": str(e)}
 
-
 @app.post("/update-profile")
-def update_profile(name: str = Form(None), avatar_url: str = Form(None), authorization: str = Header(...)):
+def update_profile(name: str = Form(None), avatar: UploadFile = File(None), authorization: str = Header(...)):
     """
     Update logged-in user's metadata
     """
@@ -77,15 +76,13 @@ def update_profile(name: str = Form(None), avatar_url: str = Form(None), authori
         user = supabase.auth.get_user(token).user
 
         # Update metadata
-        updated_user = supabase.auth.update_user(
-            user.id,
-            {
-                "data": {
-                    "name": name,
-                    "avatar_url": avatar_url
-                }
+        updated_user = supabase.auth.update_user({
+           "data": {
+                "name": name,
+                "avatar_url": avatar
             }
-        )
+
+        })
 
         return {
             "message": "Profile updated",
@@ -96,3 +93,4 @@ def update_profile(name: str = Form(None), avatar_url: str = Form(None), authori
 
     except Exception as e:
         return {"error": str(e)}
+
