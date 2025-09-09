@@ -65,27 +65,35 @@ def login(email: str = Form(...), password: str = Form(...)):
 
 
 @app.post("/update-profile")
-def update_profile(name: str = Form(None), avatar_url: str = Form(None), authorization: str = Header(...)):
-    """
-    Update logged-in user's metadata
-    """
+async def update_profile(
+    name: str = Form(None),
+    authorization: str = Header(...),
+    avatar: UploadFile = File(None)  # Accept file upload
+):
     try:
-        # Extract JWT token
         token = authorization.split(" ")[1]  # Bearer <token>
-
-        # Get user info
         user = supabase.auth.get_user(token).user
 
+        avatar_url = None
+        if avatar:
+            # Read file bytes
+            file_bytes = await avatar.read()
+            file_name = f"avatars/{user.id}/{avatar.filename}"
+
+            # Upload to Supabase Storage (bucket called 'avatars')
+            result = supabase.storage.from_('avatars').upload(file_name, file_bytes)
+            if result.get('error'):
+                return {"error": result['error']['message']}
+            
+            # Get public URL
+            avatar_url = supabase.storage.from_('avatars').get_public_url(file_name)
+        
         # Update metadata
-        updated_user = supabase.auth.update_user(
-            user.id,
-            {
-                "data": {
-                    "name": name,
-                    "avatar_url": avatar_url
-                }
-            }
-        )
+        data = {"name": name}
+        if avatar_url:
+            data["avatar_url"] = avatar_url
+
+        updated_user = supabase.auth.update_user({"data": data})
 
         return {
             "message": "Profile updated",
@@ -93,6 +101,5 @@ def update_profile(name: str = Form(None), avatar_url: str = Form(None), authori
             "name": updated_user.user.user_metadata.get("name"),
             "avatar_url": updated_user.user.user_metadata.get("avatar_url")
         }
-
     except Exception as e:
         return {"error": str(e)}
