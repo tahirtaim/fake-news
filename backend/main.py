@@ -1,4 +1,4 @@
-from fastapi import *
+from fastapi import FastAPI, HTTPException, Form, Header
 from pydantic import BaseModel
 from supabase import create_client, Client
 import os
@@ -63,6 +63,7 @@ def login(email: str = Form(...), password: str = Form(...)):
     except Exception as e:
         return {"error": str(e)}
 
+
 @app.post("/update-profile")
 def update_profile(name: str = Form(None), avatar_url: str = Form(None), authorization: str = Header(...)):
     """
@@ -72,16 +73,18 @@ def update_profile(name: str = Form(None), avatar_url: str = Form(None), authori
         # Extract JWT token
         token = authorization.split(" ")[1]  # Bearer <token>
 
-        # Set auth context for Supabase client
-        supabase.auth.session = supabase.auth.get_user(token).session
+        # Get user info
+        user = supabase.auth.get_user(token).user
 
         # Update metadata
-        updated_user = supabase.auth.update_user({
-            "data": {
-                "name": name,
-                "avatar_url": avatar_url
+        updated_user = supabase.auth.update_user(
+            {
+                "data": {
+                    "name": name,
+                    "avatar_url": avatar_url
+                }
             }
-        })
+        )
 
         return {
             "message": "Profile updated",
