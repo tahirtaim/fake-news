@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import auth, profile
+from app.routes import auth, profile, predict
 
 app = FastAPI()
 
@@ -10,3 +10,4 @@ def root():
 # Include routes
 app.include_router(auth.router, prefix="/api", tags=["Auth"])
 app.include_router(profile.router, prefix="/api", tags=["User"])
+app.include_router(predict.router, prefix="/api", tags=["Prediction"])
