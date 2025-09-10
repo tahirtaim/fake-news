@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Form, Header, HTTPException, Depends
+from fastapi import APIRouter, Header, HTTPException, Depends
+from pydantic import BaseModel
 from typing import Optional
 from app.services.supabase_client import supabase
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
@@ -6,24 +7,31 @@ import torch
 
 router = APIRouter()
 
+# ----------------- Load model -----------------
 model_name = "YerayEsp/FakeBERTa"
 classifier = pipeline("text-classification", model=model_name, tokenizer=model_name)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name)
 label_map = {"LABEL_0": "FAKE", "LABEL_1": "REAL"}
 
+# ----------------- Pydantic model for JSON request -----------------
+class PredictRequest(BaseModel):
+    headline: Optional[str] = None
+    body: Optional[str] = None
+
+# ----------------- Auth dependency -----------------
 async def verify_token(authorization: str = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authentication token")
     
     token = authorization.replace("Bearer ", "")
     try:
-
-        user = supabase.auth.get_user(token)
+        user = supabase.auth.get_user(token).user
         return user
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
+# ----------------- Prediction helper -----------------
 def predict_text(headline=None, body=None):
     if headline and body:
         text = headline + " " + body
@@ -34,9 +42,11 @@ def predict_text(headline=None, body=None):
     else:
         return {"error": "No text provided"}
 
+    # Simple classifier
     result = classifier(text)[0]
     label = label_map.get(result['label'], result['label'])
 
+    # Compute probabilities
     inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
     outputs = model(**inputs)
     probs = torch.nn.functional.softmax(outputs.logits, dim=-1)[0].detach()
@@ -50,16 +60,13 @@ def predict_text(headline=None, body=None):
         "real_score": real_score
     }
 
+# ----------------- Predict endpoint -----------------
 @router.post("/predict")
-async def predict(
-    headline: Optional[str] = Form(None),
-    body: Optional[str] = Form(None),
-    user = Depends(verify_token)
-):
-    if not headline and not body:
+async def predict(request: PredictRequest, user = Depends(verify_token)):
+    if not request.headline and not request.body:
         raise HTTPException(status_code=400, detail="Either headline or body must be provided")
     
-    result = predict_text(headline=headline, body=body)
+    result = predict_text(headline=request.headline, body=request.body)
     
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
