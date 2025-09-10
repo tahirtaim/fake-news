@@ -16,7 +16,7 @@ def signup(email: str = Form(...), password: str = Form(...), name: str = Form(N
                 }
             }
         })
-        return {"message": "User created", "email": result.user.email}
+        return {"message": "User created", "email": result.user.email,"access_token": result.session.access_token,"avatar_url": result.user.user_metadata.get("avatar_url")}
     except Exception as e:
         return {"error": str(e)}
 
