@@ -1,35 +1,27 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, Form
 from app.services.supabase_client import supabase
 
 router = APIRouter()
 
-# ----------------- Pydantic Models -----------------
-class SignupRequest(BaseModel):
-    email: str
-    password: str
-    name: str = None
-    avatar: str = None
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
 # ----------------- Signup -----------------
 @router.post("/signup")
-def signup(request: SignupRequest):
+def signup(
+    email: str = Form(...),
+    password: str = Form(...),
+    name: str = Form(None),
+    avatar: str = Form(None)
+):
     try:
         result = supabase.auth.sign_up({
-            "email": request.email,
-            "password": request.password,
+            "email": email,
+            "password": password,
             "options": {
                 "data": {
-                    "name": request.name,
-                    "avatar_url": request.avatar
+                    "name": name,
+                    "avatar_url": avatar
                 }
             }
         })
-
         return {
             "message": "User created",
             "email": result.user.email,
@@ -41,11 +33,14 @@ def signup(request: SignupRequest):
 
 # ----------------- Login -----------------
 @router.post("/login")
-def login(request: LoginRequest):
+def login(
+    email: str = Form(...),
+    password: str = Form(...)
+):
     try:
         result = supabase.auth.sign_in_with_password({
-            "email": request.email,
-            "password": request.password
+            "email": email,
+            "password": password
         })
 
         if result.session:
